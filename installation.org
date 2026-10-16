@@ -1,0 +1,137 @@
+#+title: Installing eSASS4DR1 locally
+
+This guide installs the locally built Linux package on the same computer where
+the repository's =recipe/output= artifact is available. It uses mamba and the
+package tested at:
+
+=/data/cluster4/bjm/erassDR1/esass4dr1-conda-recipe/recipe/output/linux-64/esass4dr1-1.0.2-h4ffce49_0.conda=
+
+* Install the local package
+
+Check that mamba is available and that you can read the package:
+
+#+begin_src bash
+mamba --version
+ls -l /data/cluster4/bjm/erassDR1/esass4dr1-conda-recipe/recipe/output/linux-64/esass4dr1-1.0.2-h4ffce49_0.conda
+#+end_src
+
+If mamba is not installed, install Miniforge and initialize mamba for your
+shell first. If the package path is not readable, ask the directory owner to
+grant access.
+
+Create the environment. This resolves HEASoft and other dependencies from the
+HEASARC and conda-forge channels while installing eSASS4DR1 from the local
+artifact:
+
+#+begin_src bash
+mamba create -n esass-test \
+  -c file:///data/cluster4/bjm/erassDR1/esass4dr1-conda-recipe/recipe/output/linux-64/esass4dr1-1.0.2-h4ffce49_0.conda \
+  -c https://heasarc.gsfc.nasa.gov/FTP/software/conda \
+  -c conda-forge \
+  --override-channels esass4dr1
+#+end_src
+
+Activate it and check the installed package and executable:
+
+#+begin_src bash
+mamba activate esass-test
+mamba list esass4dr1
+which evtool
+evtool --help
+#+end_src
+
+=mamba list= should show version =1.0.2= and build =h4ffce49_0=. The path
+reported by =which evtool= should be inside the active environment, under
+=eSASS4DR1/eSASS/bin=.
+
+* Configure CALDB and test with the demo script
+
+eSASS needs the calibration database for processing data. Download and unpack
+CALDB and an example event list into a short path; short paths can avoid
+path-length problems in some eSASS tools:
+
+#+begin_src bash
+mkdir -p /tmp/esass-data
+cd /tmp/esass-data
+curl -L https://erosita.mpe.mpg.de/dr1/eSASS4DR1/eSASS4DR1_installation/caldb4DR1.tgz -o caldb4DR1.tgz
+tar -xzf caldb4DR1.tgz
+curl -L https://heasarc.gsfc.nasa.gov/FTP/srg/data/erosita/erass1/obs/141/053/EXP_010/em01_053141_020_EventList_c010.fits.gz -o em01_053141_020_EventList_c010.fits.gz
+gunzip em01_053141_020_EventList_c010.fits.gz
+#+end_src
+
+Set the CALDB variables in the active shell (or add these exports to your shell
+startup file, adjusting the path if you put CALDB elsewhere):
+
+#+begin_src bash
+export CALDB=/tmp/esass-data/caldb4DR1
+export CALDBCONFIG=$CALDB/software/tools/caldb.config
+export CALDBALIAS=$CALDB/software/tools/alias_config.fits
+export SASS_CALVERS=$CALDB/data/erosita/calvers.indx
+#+end_src
+
+Run the demo script and inspect the generated output:
+
+#+begin_src bash
+mkdir -p outputs
+python $CONDA_PREFIX/eSASS4DR1/eSASS/scripts/demoscript_DR1.py \
+  /tmp/esass-data/em01_053141_020_EventList_c010.fits outputs/
+#+end_src
+
+* Rebuild and reinstall if needed
+
+The original incompatibility was caused by Linux binaries requiring
+=GLIBC_2.33=, =GLIBC_2.34=, and =GLIBC_2.38= on a system with glibc 2.35. The
+recipe's =stdlib('c')= requirement and the =c_stdlib=sysroot= build variant
+select a conda sysroot instead of implicitly linking to the build machine's
+glibc. The locally tested artifact's highest glibc requirement was
+=GLIBC_2.27=. After future recipe or eSASS source changes, check the resulting
+binary again rather than assuming its glibc requirement is unchanged.
+
+Install the build tools in a separate environment and activate it:
+
+#+begin_src bash
+mamba create -n rattler-conda-build -c conda-forge rattler-build rattler-index
+mamba activate rattler-conda-build
+#+end_src
+
+From the repository root, build for Linux with the sysroot and the HEASARC
+channel. The =2.28= sysroot version is the setting used for the local build
+whose binaries required no newer than =GLIBC_2.27=:
+
+#+begin_src bash
+cd /data/cluster4/bjm/erassDR1/esass4dr1-conda-recipe/recipe
+ulimit -n 16000
+
+rattler-build build \
+  --recipe recipe.yaml \
+  -c https://heasarc.gsfc.nasa.gov/FTP/software/conda/ \
+  -c conda-forge \
+  --variant heasoft_version="6.37.*" \
+  --variant c_stdlib="sysroot" \
+  --variant c_stdlib_version="2.28" \
+  --keep-build
+#+end_src
+
+The build artifact is written under =recipe/output/linux-64/=. Inspect the
+installed package-prefix copy of =evtool= (not the source tree) to confirm its
+glibc requirements:
+
+#+begin_src bash
+find output/bld -path '*/eSASS4DR1/eSASS/bin/evtool' -type f
+objdump -T /path/to/the/installed/prefix/eSASS4DR1/eSASS/bin/evtool \
+  | grep -o 'GLIBC_2\.[0-9]*' | sort -uV
+#+end_src
+
+The tested artifact reported =GLIBC_2.27= as its highest requirement. Get the
+exact filename produced by the new build, and use that file's absolute path in
+the =file://= channel argument in the create command above (replacing the
+example filename). Use a new environment name or remove the old test
+environment before recreating it:
+
+#+begin_src bash
+mamba env remove -n esass-test
+#+end_src
+
+Then repeat the install, CALDB setup, and demo test above. The GitHub Linux
+build workflow also passes =c_stdlib=sysroot=; keep that variant when updating
+the workflow or reproducing its build locally.

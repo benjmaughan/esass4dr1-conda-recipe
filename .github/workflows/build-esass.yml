@@ -158,6 +158,7 @@ jobs:
             --channel conda-forge \
             --variant version=${{ env.ESASS_VERSION }} \
             --variant heasoft_version=${{ matrix.heasoft }} \
+            --variant c_stdlib=sysroot \
             --variant c_stdlib_version=2.35 \
             --variant c_compiler_version=${{ matrix.c-compiler-version }} \
             --variant cxx_compiler_version=${{ matrix.cxx-compiler-version }} \
