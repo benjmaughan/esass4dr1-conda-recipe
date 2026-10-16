@@ -6,6 +6,22 @@ This repository contains a Conda recipe for eROSITA's eSASSDR1 software. It supp
 
 The Conda-packaged version of eSASS4DR1 is hosted on a Conda community channel (https://anaconda.org/channels/davidt3), as it is not possible to release a package on conda-forge when it has external dependencies (HEASoft being on the HEASARC Conda channel in this instance).
 
+### Linux glibc compatibility and local installation
+
+An earlier Linux build required `GLIBC_2.33`, `GLIBC_2.34`, and `GLIBC_2.38`, which are not available on Ubuntu systems using glibc 2.35. The recipe now includes `stdlib('c')`, and the Linux build workflow selects the `sysroot` C standard library variant. The locally tested build then required glibc only through `GLIBC_2.27`.
+
+To install that tested artifact on the same computer, use the local `.conda` package directly with mamba (rather than the older community-channel package):
+
+```bash
+mamba create -n esass-test \
+  -c file:///data/cluster4/bjm/erassDR1/esass4dr1-conda-recipe/recipe/output/linux-64/esass4dr1-1.0.2-h4ffce49_0.conda \
+  -c https://heasarc.gsfc.nasa.gov/FTP/software/conda \
+  -c conda-forge \
+  --override-channels esass4dr1
+```
+
+For complete setup, CALDB configuration, demo testing, and instructions to rebuild and reinstall the package if the compatibility issue recurs, see [`installation.org`](installation.org).
+
 To create a minimal new Conda environment (`esass4dr1-env`) with eSASS4DR1 installed, you could use the following command:
 
 ```bash
@@ -93,6 +109,8 @@ rattler-build build \
   -c https://heasarc.gsfc.nasa.gov/FTP/software/conda/ \
   -c conda-forge \
   --variant heasoft_version="6.37.*" \
+  --variant c_stdlib="sysroot" \
+  --variant c_stdlib_version="2.28" \
   --keep-build
 ```
 
@@ -125,7 +143,6 @@ rattler-build build \
   --variant fortran_compiler_version="==14.2.0" \
   --keep-build
 ```
-
 
 
 
